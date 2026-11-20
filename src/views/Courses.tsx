@@ -4,6 +4,13 @@ import { courses, courseUnits, lessons, courseResources, courseVersions, instruc
 import { enrollment, prereqMet, progress } from "../data/selectors";
 import { useStore } from "../store/Store";
 
+const generateCourseCode = () => {
+  const generated = courses
+    .map((course) => Number(course.code.match(/\d+$/)?.[0] ?? 0))
+    .reduce((max, value) => Math.max(max, value), 0);
+  return `CUR-${String(generated + 1).padStart(3, "0")}`;
+};
+
 const emptyCourse = (): Course => ({
   id: "",
   code: "",
@@ -202,7 +209,7 @@ export default function Courses() {
             <div className="editor-tabs"><button type="button" className={editorTab === "general" ? "active" : ""} onClick={() => setEditorTab("general")}>Información general</button><button type="button" className={editorTab === "versions" ? "active" : ""} onClick={() => setEditorTab("versions")}>Versionado y publicación</button></div>
             {editorTab === "general" ? (
               <div className="editor-grid">
-                <label><span>Código</span><input value={draft.code} onChange={(e) => setDraft({ ...draft, code: e.target.value })} /></label>
+                <label><span>Código generado</span><input className="readonly-code" value={draft.code || generateCourseCode()} readOnly disabled aria-label="Código automático del curso" /></label>
                 <label><span>Título</span><input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
                 <label className="editor-wide"><span>Descripción</span><textarea rows={4} value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} /></label>
                 <label><span>Nivel</span><select value={draft.level} onChange={(e) => setDraft({ ...draft, level: e.target.value })}><option>Básico</option><option>Intermedio</option><option>Avanzado</option></select></label>

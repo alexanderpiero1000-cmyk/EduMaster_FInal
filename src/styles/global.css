@@ -166,3 +166,5 @@ textarea { font:inherit; color:var(--text); background:var(--bg); border:1px sol
 @media (max-width:760px) {
   .editor-grid .skill-options, .editor-grid .collaborator-options { grid-template-columns:1fr; }
 }
+
+input.readonly-code { opacity:.62; cursor:not-allowed; background:rgba(143,166,196,.09); color:var(--muted); border-style:dashed; }
