@@ -10,6 +10,7 @@ export type Action =
   | { t: "issue"; s: string; c: string } | { t: "revoke"; folio: string }
   | { t: "rec"; key: string; v: RecState | null } | { t: "post"; s: string; c: string; text: string }
   | { t: "setting"; k: keyof Settings; v: boolean } | { t: "assign"; s: string; p: string }
+  | { t: "learning"; type: "course.opened" | "lesson.started" | "lesson.completed" | "resource.consumed" | "activity.completed"; s: string; c: string; entityId?: string }
   | { t: "log"; type: string; text: string };
 
 let n = 100;
@@ -51,6 +52,18 @@ function reducer(db: DB, a: Action): DB {
       const p = paths.find((x) => x.id === a.p)!;
       const add = p.courseIds.filter((c) => !enrollment(db, a.s, c)).map((c) => ({ studentId: a.s, courseId: c, done: 0 }));
       return log({ ...db, enrollments: [...db.enrollments, ...add] }, "path.assigned", `${p.title} asignada a ${student(a.s).name} (+${add.length} cursos)`);
+    }
+    case "learning": {
+      const event = {
+        id: uid(),
+        type: a.type,
+        studentId: a.s,
+        courseId: a.c,
+        entityId: a.entityId,
+        at: now(),
+      };
+      const next = { ...db, learningEvents: [event, ...db.learningEvents].slice(0, 500) };
+      return log(next, `learning.${a.type}`, `${student(a.s).name} · ${a.type}${a.entityId ? ` · ${a.entityId}` : ""} · ${course(a.c).title}`);
     }
     case "log": return log(db, a.type, a.text);
   }

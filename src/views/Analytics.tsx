@@ -22,6 +22,11 @@ export default function Analytics() {
         <div className="scroll"><table className="tbl"><thead><tr><th>Estudiante</th><th>Cohorte</th><th>Avance medio</th><th>Nota media</th><th>Señal de apoyo</th></tr></thead>
           <tbody>{rows.map((s) => <tr key={s.id}><td>{s.name}</td><td>{s.cohort}</td><td>{Math.round(avgProgress(db, s.id) * 100)}%</td><td>{avgScore(db, s.id) ?? "—"}</td><td><span className={`badge ${risk(db, s.id) === "alta" ? "warn" : ""}`}>{risk(db, s.id)}</span></td></tr>)}</tbody></table></div>
         <p className="muted small">Indicador: avance medio = lecciones hechas / requeridas, promediado por matrícula. La señal de apoyo es una estimación para revisión humana, no una sanción.</p></section>
+      <section className="card"><div className="card-head"><h2>Consumo de aprendizaje</h2></div>
+        <div className="scroll"><table className="tbl"><thead><tr><th>Evento</th><th>Estudiante</th><th>Curso</th><th>Entidad</th><th>Fecha</th></tr></thead>
+          <tbody>{db.learningEvents.slice(0, 12).map((e) => <tr key={e.id}><td>{e.type}</td><td>{students.find((s) => s.id === e.studentId)?.name}</td><td>{courses.find((c) => c.id === e.courseId)?.title}</td><td className="muted small">{e.entityId ?? "—"}</td><td className="muted small">{new Date(e.at).toLocaleString("es-PE")}</td></tr>)}</tbody></table></div>
+        <div className="legend" style={{ marginTop: 10 }}>{["course.opened","lesson.started","lesson.completed","resource.consumed","activity.completed"].map((type) => <span key={type}><i style={{ background: "var(--cyan)" }} />{type}: {db.learningEvents.filter((e) => e.type === type).length}</span>)}</div>
+      </section>
       <section className="card"><div className="card-head"><h2>Cursos</h2></div>
         <div className="scroll"><table className="tbl"><thead><tr><th>Curso</th><th>Matrículas</th><th>Finalización</th><th>Nota media</th></tr></thead>
           <tbody>{courses.map((c) => {
