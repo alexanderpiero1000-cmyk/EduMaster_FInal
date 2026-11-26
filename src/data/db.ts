@@ -32,8 +32,15 @@ export interface Assessment { id: string; courseId: string; title: string; pass:
 export interface Enrollment { studentId: string; courseId: string; done: number }
 export interface Attempt { id: string; assessmentId: string; studentId: string; score: number; at: string }
 export interface Cert { folio: string; code: string; studentId: string; courseId: string; issuedAt: string; status: "emitido" | "anulado" }
-export interface Post { id: string; courseId: string; studentId: string; text: string; at: string }
-export interface Audit { id: string; type: string; text: string; at: string }
+export interface Post { id: string; courseId: string; studentId: string; text: string; at: string; author?: string; parentId?: string; hidden?: { by: string; reason: string; at: string } }
+export interface Audit { id: string; type: string; text: string; at: string; by?: string; s?: string; c?: string; schema_version?: 1; source?: "simulacion" }
+export interface Submission { id: string; assessmentId: string; studentId: string; courseId: string; at: string; status: "pendiente" | "calificada"; score: number | null; alerted?: boolean }
+export interface PathAssignment { pathId: string; studentId: string; at: string }
+export interface Review { by: string; comment: string; at: string }
+/** Registro informativo de una red del laboratorio (DEMO). El motor del tutor no la usa. */
+export interface ModelVersion { id: string; at: string; author: string; label: string; arch: string; auc: number; f1: number; brier: number; testAuc: number | null; experimentAt: string }
+// "to": "s:<estudiante>", "c:<curso>" (docentes de ese curso) o "r:<rol>"
+export interface Notif { id: string; to: string; text: string; at: string; read: boolean }
 export type LearningEventType = "course.opened" | "lesson.started" | "lesson.completed" | "resource.consumed" | "activity.completed";
 export interface LearningEvent { id: string; type: LearningEventType; studentId: string; courseId: string; entityId?: string; at: string }
 export interface Path { id: string; title: string; objective: string; courseIds: string[] }
@@ -42,6 +49,11 @@ export interface Settings { sim: boolean; reducedMotion: boolean; humanReview: b
 export interface DB {
   enrollments: Enrollment[]; attempts: Attempt[]; certs: Cert[]; posts: Post[]; audit: Audit[]; learningEvents: LearningEvent[];
   recState: Record<string, RecState>; settings: Settings;
+  submissions: Submission[]; notifications: Notif[];
+  paths: Path[]; assignments: PathAssignment[];
+  reviews: Record<string, Review>;
+  inactive: string[];                      // ids de usuarios de demostración desactivados
+  modelVersions: ModelVersion[];
 }
 
 export const regions = ["América del Norte","Europa","Asia","América del Sur","África","Oceanía"];
@@ -123,6 +135,16 @@ export function seed(): DB {
     posts: [{ id: "m1", courseId: "c1", studentId: "s1", text: "¿Alguien tiene ejemplos de listas por comprensión?", at: H(5) }],
     audit: [{ id: "x1", type: "system.started", text: "Dataset DEMO cargado", at: H(0.1) }],
     recState: {}, settings: { sim: true, reducedMotion: false, humanReview: true },
+    submissions: [],
+    paths: paths.map((p) => ({ ...p })),
+    assignments: [{ pathId: "p1", studentId: "s1", at: H(20) }],
+    reviews: {},
+    inactive: [],
+    modelVersions: [],
+    notifications: [
+      { id: "n1", to: "s:s1", text: "Bienvenida: aquí verás tus avisos de cursos y calificaciones (DEMO).", at: H(0.1), read: false },
+      { id: "n2", to: "c:c1", text: "Python Básico: aquí llegarán las entregas por calificar (DEMO).", at: H(0.1), read: false },
+    ],
   };
 }
 

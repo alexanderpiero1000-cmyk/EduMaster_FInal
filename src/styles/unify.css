@@ -1,0 +1,84 @@
+/* Unifica las vistas clásicas (clases de global.css) con el diseño del Resumen. Solo apariencia.
+   Se importa después de global.css/fase0.css y antes de theme.css. No modifica esas hojas. */
+
+:root { --line:rgba(255,255,255,.10); --line-strong:rgba(255,255,255,.16); --tint:rgba(255,255,255,.04); --em-shadow:rgba(2,12,28,.25); }
+:root[data-theme="light"] { --line:rgba(16,40,80,.11); --line-strong:rgba(16,40,80,.20); --tint:rgba(16,40,80,.04); }
+
+/* ---- página: mismo ancho, aire y jerarquía ---- */
+main { padding:24px; gap:20px; }
+main > * { width:100%; max-width:1400px; margin-inline:auto; }
+.page-title { font-size:22px; line-height:28px; margin:0; }
+.cols { gap:24px; grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr)); }
+/* si una vista tiene tablas, sus tarjetas se apilan a todo el ancho: sin desplazamiento ni huecos */
+.cols:has(> * > .scroll > .tbl) > * { grid-column:1 / -1; }
+.session-card .badge { white-space:normal; }
+
+/* ---- tarjetas ---- */
+.card { border:1px solid var(--line); border-radius:16px; padding:20px; background:linear-gradient(135deg,var(--surface),var(--surface2)); box-shadow:0 4px 18px var(--em-shadow); }
+.card-head { margin-bottom:16px; gap:12px; }
+.card-head h2 { font-size:13px; font-weight:400; color:var(--muted); }
+.card h3 { margin:20px 0 8px; font-size:13px; font-weight:400; }
+.course-card h3 { margin:14px 0 6px; font-size:16px; font-weight:600; }
+
+/* ---- listas: filas separadas por una línea fina ---- */
+.list { gap:0; }
+.list li { padding:12px 0; border-radius:0; background:transparent; border-bottom:1px solid var(--line); }
+.list li:last-child { border-bottom:0; }
+.list li:first-child { padding-top:0; }
+.bell-panel .list li { padding-left:10px; }
+.steps li::marker { color:var(--muted); }
+
+/* ---- tablas ---- */
+.tbl { font-size:13px; }
+.tbl th { font-size:12px; font-weight:400; padding:10px; border-bottom:1px solid var(--line-strong); white-space:nowrap; }
+.tbl td { padding:12px 10px; border-bottom:1px solid var(--line); vertical-align:middle; }
+.tbl tbody tr:hover { background:var(--tint); }
+.tbl tbody tr:last-child td { border-bottom:0; }
+.tbl .row-actions { flex-wrap:nowrap; }
+
+/* ---- controles ---- */
+button { border-radius:12px; padding:8px 14px; font-size:13px; font-weight:600; transition:background-color .15s ease, border-color .15s ease, opacity .15s ease; }
+button.ghost { border:1px solid var(--line-strong); }
+button.nav { font-weight:400; font-size:14px; padding:9px 12px; }
+.row-actions { flex-wrap:wrap; gap:8px; align-items:center; }
+input, select, textarea { border-radius:12px; border-color:var(--line-strong); padding:8px 12px; }
+input[type="checkbox"], input[type="radio"] { padding:0; }
+.badge { white-space:nowrap; line-height:1.5; }
+.badge:not(.live):not(.demo):not(.warn):not(.off):not(.role-chip) { border-color:var(--line-strong); }
+.bar { background:var(--line); }
+
+/* ---- módulo de cursos ---- */
+.course-module { gap:20px; }
+.course-tabs { border-bottom:1px solid var(--line); flex-wrap:wrap; }
+.course-tab { font-weight:600; }
+.course-section { padding:20px; }
+.course-grid { grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr)); gap:16px; }
+.course-card { border-color:var(--line); border-radius:16px; padding:18px; }
+.course-card:hover, .course-card:focus-visible { transform:translateY(-2px); }
+.course-meta span, .course-detail-side, .unit-item { background:var(--tint); border-radius:12px; }
+.course-card-footer { border-top:1px solid var(--line); flex-wrap:wrap; }
+.unit-block, .version-row, .collaborator-options label, .skill-options label { border-color:var(--line); border-radius:12px; }
+.unit-header { background:var(--tint); }
+.lesson-row { border-top:1px solid var(--line); }
+.modal { border-color:var(--line); border-radius:20px; }
+.modal-head, .editor-tabs { border-bottom:1px solid var(--line); }
+.modal-actions { border-top:1px solid var(--line); }
+.empty-state { border-color:var(--line-strong); border-radius:16px; }
+
+@media (max-width:760px) {
+  main { padding:16px; gap:16px; }
+  .card { padding:16px; }
+  .cols { gap:16px; }
+  .course-filters { grid-template-columns:1fr; }
+  .session-card { display:none; }
+  /* tablas con acciones: cada fila se apila para que los botones queden a la vista */
+  .tbl.stack thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .tbl.stack, .tbl.stack tbody, .tbl.stack tr, .tbl.stack td { display:block; width:100%; }
+  .tbl.stack tr { padding:12px 0; border-bottom:1px solid var(--line-strong); }
+  .tbl.stack tr:last-child { border-bottom:0; }
+  .tbl.stack td { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; padding:4px 0; border:0; text-align:right; }
+  .tbl.stack td:first-child { justify-content:flex-start; text-align:left; font-weight:600; }
+  .tbl.stack td[data-label]::before { content:attr(data-label); color:var(--muted); font-size:12px; font-weight:400; }
+  .tbl.stack tbody tr:hover { background:transparent; }
+}
+@media (prefers-reduced-motion:reduce) { button, .course-card { transition:none; } .course-card:hover { transform:none; } }

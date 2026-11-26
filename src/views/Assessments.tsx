@@ -1,27 +1,57 @@
 import { useState } from "react";
+import { useActionNotice } from "../components/ui/useActionNotice";
 import { assessments } from "../data/db";
-import { best, course, enrollment, probCompletion, student } from "../data/selectors";
-import { useStore } from "../store/Store";
+import { best, course, enrollment, probCompletion, progress, student } from "../data/selectors";
+import { ownsCourse, scopeStudents, shownName } from "../data/scope";
+import { useStore, useUser } from "../store/Store";
 
 export default function Assessments() {
-  const { db, act, sid } = useStore();
+  const { db, sid, can } = useStore();
+  const { run, notice } = useActionNotice();
+  const user = useUser();
   const [score, setScore] = useState<Record<string, string>>({});
+  const name = (id: string) => shownName(user, student(id));
+  const inScope = new Set(scopeStudents(db, user).map((s) => s.id));
+  const list = assessments.filter((a) => ownsCourse(user, course(a.courseId)));
+  const queue = db.submissions.filter((x) => x.status === "pendiente" && ownsCourse(user, course(x.courseId)));
+  const recent = db.attempts.filter((t) => inScope.has(t.studentId) && list.some((a) => a.id === t.assessmentId)).slice(0, 8);
+  const title = (id: string) => assessments.find((a) => a.id === id)?.title ?? id;
+
   return (
     <div className="cols">
-      <section className="card"><div className="card-head"><h2>Evaluaciones · {student(sid).name}</h2></div>
-        <div className="scroll"><table className="tbl"><thead><tr><th>Evaluación</th><th>Aprobar con</th><th>Nota oficial</th><th>Estimación IA</th><th>Registrar intento</th></tr></thead>
-          <tbody>{assessments.map((a) => {
-            const enr = enrollment(db, sid, a.courseId), b = best(db, sid, a.courseId), v = Number(score[a.id]);
-            const ok = score[a.id] !== undefined && score[a.id] !== "" && v >= 0 && v <= 100;
-            return <tr key={a.id}><td>{a.title}</td><td>{a.pass}</td>
-              <td>{b === null ? "—" : <b className={b >= a.pass ? "ok" : "bad"}>{b}</b>}</td>
-              <td className="muted">{enr ? `${Math.round(probCompletion(db, sid, a.courseId) * 100)}% finalizar` : "—"}</td>
-              <td>{enr ? <div className="row-actions"><input type="number" min={0} max={100} style={{ width: 70 }} value={score[a.id] ?? ""} onChange={(e) => setScore({ ...score, [a.id]: e.target.value })} />
-                <button disabled={!ok} onClick={() => { act({ t: "attempt", s: sid, a: a.id, c: a.courseId, score: v }); setScore({ ...score, [a.id]: "" }); }}>Registrar</button></div> : <span className="muted small">No inscrito en {course(a.courseId).title}</span>}</td></tr>;
+      {user.role !== "docente" && (
+      <section className="card"><div className="card-head"><h2>Evaluaciones · {name(sid)}</h2></div>
+        <div className="scroll"><table className="tbl stack"><thead><tr><th>Evaluación</th><th>Avance</th><th>Aprobar con</th><th>Nota oficial</th><th>Estimación IA</th>{can("submit") && <th>Entrega</th>}</tr></thead>
+          <tbody>{list.map((a) => {
+            const enr = enrollment(db, sid, a.courseId), b = best(db, sid, a.courseId), p = progress(db, sid, a.courseId);
+            const pending = db.submissions.some((x) => x.studentId === sid && x.assessmentId === a.id && x.status === "pendiente");
+            return <tr key={a.id}><td>{a.title}</td><td data-label="Avance">{enr ? `${Math.round(p * 100)}%` : <span className="muted small">No inscrito</span>}</td><td data-label="Aprobar con">{a.pass}</td>
+              <td data-label="Nota oficial">{b === null ? "—" : <b className={b >= a.pass ? "ok" : "bad"}>{b}</b>}</td>
+              <td data-label="Estimación IA" className="muted">{enr ? `${Math.round(probCompletion(db, sid, a.courseId) * 100)}% finalizar · DEMO` : "—"}</td>
+              {can("submit") && <td data-label="Entrega">{!enr ? "—" : pending ? <span className="badge demo">Pendiente de calificación</span>
+                : <><button disabled={p < 0.5} onClick={() => run({ t: "submit", s: sid, a: a.id, c: a.courseId })}>Entregar</button>{p < 0.5 && <div className="muted small">Requiere 50% de avance</div>}</>}</td>}
+            </tr>;
           })}</tbody></table></div>
-        <p className="muted small">La nota oficial y la estimación IA se guardan por separado. Registrar un intento actualiza dominio, analítica y elegibilidad de certificado.</p></section>
+        <p className="muted small">La nota oficial la confirma el docente. La estimación IA se muestra aparte y no es una nota.</p></section>
+      )}
+
+      {(can("grade") || user.role === "superadmin") && (
+        <section className="card" style={{ order: user.role === "docente" ? -1 : 0 }}><div className="card-head"><h2>{can("grade") ? "Por calificar" : "Cola de calificación (solo lectura)"}</h2><span className="badge">{queue.length}</span></div>
+          {queue.length === 0 ? <p className="muted">No hay entregas pendientes{can("grade") ? " en tus cursos" : ""}.</p> : (
+            <ul className="list queue" aria-live="polite">{queue.map((x) => {
+              const raw = score[x.id] ?? "", v = Number(raw), ok = raw !== "" && v >= 0 && v <= 100;
+              return <li key={x.id}><div>{name(x.studentId)}<div className="muted small">{title(x.assessmentId)} · {new Date(x.at).toLocaleTimeString("es-PE")}</div></div>
+                {can("grade") ? <div className="row-actions"><input type="number" min={0} max={100} aria-label={`Nota para ${name(x.studentId)}`} placeholder="0-100" value={raw} onChange={(e) => setScore({ ...score, [x.id]: e.target.value })} />
+                  <button disabled={!ok} onClick={() => run({ t: "grade", id: x.id, score: v })}>Calificar</button></div> : <span className="badge demo">Pendiente</span>}</li>;
+            })}</ul>
+          )}
+        </section>
+      )}
+
       <section className="card"><div className="card-head"><h2>Intentos recientes</h2></div>
-        <ul className="list">{db.attempts.slice(0, 8).map((t) => <li key={t.id}><span>{student(t.studentId).name} · {assessments.find((a) => a.id === t.assessmentId)!.title}</span><b>{t.score}</b></li>)}</ul></section>
+        {recent.length === 0 ? <p className="muted">Aún no hay intentos en tu alcance.</p> :
+          <ul className="list">{recent.map((t) => <li key={t.id}><span>{name(t.studentId)} · {title(t.assessmentId)}</span><b>{t.score}</b></li>)}</ul>}</section>
+      {notice}
     </div>
   );
 }

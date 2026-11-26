@@ -1,4 +1,6 @@
 import { useState } from "react";
+import Icon from "../components/ui/Icon";
+import { useActionNotice } from "../components/ui/useActionNotice";
 import type { Course, CourseStatus } from "../data/db";
 import { courses, courseUnits, lessons, courseResources, courseVersions, instructors, skills } from "../data/db";
 import { enrollment, prereqMet, progress } from "../data/selectors";
@@ -28,11 +30,21 @@ const emptyCourse = (): Course => ({
 });
 
 export default function Courses() {
-  const { db, act, sid } = useStore();
+  const { db, act, sid, can, canManage, user } = useStore();
+  const { run, deny, notice } = useActionNotice();
+  /** Permiso sobre el curso ya existente; avisa si no lo hay. */
+  const allowed = (id: string) => { const original = courses.find((c) => c.id === id); const ok = !!original && canManage(original); if (!ok) deny(); return ok; };
   const [q, setQ] = useState(""), [lvl, setLvl] = useState(""), [statusFilter, setStatusFilter] = useState<CourseStatus | "">(""), [draft, setDraft] = useState<Course | null>(null), [versionSummary, setVersionSummary] = useState("Actualización de contenido del curso");
-  const [activeView, setActiveView] = useState<"catalog" | "mine">("catalog");
   const [detailCourse, setDetailCourse] = useState<Course | null>(null);
   const [editorTab, setEditorTab] = useState<"general" | "versions">("general");
+  const teaching = user?.role === "docente";
+  const myCourses = courses.filter((c) => (teaching ? canManage(c) : !!enrollment(db, sid, c.id)));
+  const completeNext = (c: Course) => {
+    const done = enrollment(db, sid, c.id)?.done ?? 0, lesson = lessons.filter((l) => l.courseId === c.id)[done];
+    if (!run({ t: "learning", type: "lesson.started", s: sid, c: c.id, entityId: lesson?.id })) return;
+    act({ t: "lesson", s: sid, c: c.id });
+    act({ t: "learning", type: "lesson.completed", s: sid, c: c.id, entityId: lesson?.id });
+  };
 
   const rows = courses.filter((c) =>
     (c.title + c.code + c.description + c.tags.join(" ")).toLowerCase().includes(q.toLowerCase())
@@ -42,6 +54,7 @@ export default function Courses() {
 
   const saveCourse = () => {
     if (!draft || !draft.code.trim() || !draft.title.trim()) return;
+    if (draft.id ? !allowed(draft.id) : !can("course.manage")) { if (!draft.id) deny(); return; }
     const cleaned = {
       ...draft,
       code: draft.code.trim().toUpperCase(),
@@ -52,19 +65,21 @@ export default function Courses() {
 
     if (draft.id) {
       const index = courses.findIndex((c) => c.id === draft.id);
+      if (!run({ t: "course", c: draft.id, kind: "course.updated", text: `Curso actualizado: ${cleaned.title} · Responsable: ${cleaned.instructor}` })) return;
       if (index >= 0) courses[index] = cleaned;
-      act({ t: "log", type: "course.updated", text: `Curso actualizado: ${cleaned.title} · Responsable: ${cleaned.instructor} · Colaboradores: ${cleaned.collaboratorIds?.length ?? 0}` });
     } else {
       const id = `c${Date.now()}`;
+      if (!run({ t: "course", c: id, kind: "course.created", text: `Curso creado: ${cleaned.title} · Responsable: ${cleaned.instructor}` })) return;
       courses.push({ ...cleaned, id });
-      act({ t: "log", type: "course.created", text: `Curso creado: ${cleaned.title} · Responsable: ${cleaned.instructor} · Colaboradores: ${cleaned.collaboratorIds?.length ?? 0}` });
     }
     setDraft(null);
   };
 
   const addVersion = (target: Course, status: "borrador" | "publicada") => {
+    if (!allowed(target.id)) return;
     const versions = courseVersions.filter((v) => v.courseId === target.id);
     const number = versions.length ? Math.max(...versions.map((v) => v.number)) + 1 : 1;
+    if (!run({ t: "course", c: target.id, kind: status === "publicada" ? "course.version.published" : "course.version.draft", text: `${target.title} · Versión ${number} ${status === "publicada" ? "publicada" : "guardada como borrador"}` })) return;
     courseVersions.unshift({
       id: `${target.id}-v${number}-${Date.now()}`,
       courseId: target.id,
@@ -74,14 +89,13 @@ export default function Courses() {
       summary: versionSummary.trim() || "Actualización de contenido del curso",
       status,
     });
-    act({ t: "log", type: status === "publicada" ? "course.version.published" : "course.version.draft", text: `${target.title} · Versión ${number} ${status === "publicada" ? "publicada" : "guardada como borrador"}` });
   };
 
   const setCourseStatus = (target: Course, status: CourseStatus) => {
     const index = courses.findIndex((c) => c.id === target.id);
-    if (index < 0) return;
+    if (index < 0 || !allowed(target.id)) return;
+    if (!run({ t: "course", c: target.id, kind: `course.${status}`, text: `${target.title} pasó a estado ${status}` })) return;
     courses[index] = { ...target, status };
-    act({ t: "log", type: `course.${status}`, text: `${target.title} pasó a estado ${status}` });
   };
 
   const openEditor = (course?: Course) => {
@@ -96,16 +110,12 @@ export default function Courses() {
 
   return (
     <div className="course-module">
-      <div className="course-tabs" role="tablist">
-        <button type="button" role="tab" aria-selected={activeView === "catalog"} className={`course-tab ${activeView === "catalog" ? "active" : ""}`} onClick={() => setActiveView("catalog")}>Catálogo de cursos</button>
-        <button type="button" role="tab" aria-selected={activeView === "mine"} className={`course-tab ${activeView === "mine" ? "active" : ""}`} onClick={() => setActiveView("mine")}>Mis cursos</button>
-      </div>
 
-      {activeView === "catalog" && (
+      {(
         <section className="card course-section">
           <div className="course-section-head">
-            <div><h2>Catálogo de cursos</h2><p className="muted small">Explora los programas disponibles y revisa su información completa.</p></div>
-            <button type="button" onClick={() => openEditor()}>Crear curso</button>
+            <div><h2>Catálogo de cursos</h2><p className="muted small">{user?.role === "superadmin" ? "Crea, edita y publica cualquier curso." : teaching ? "Consulta de todo el catálogo (solo lectura)." : "Explora los programas e inscríbete (se validan los prerrequisitos)."}</p></div>
+            {can("course.manage") && user?.role !== "docente" && <button type="button" onClick={() => openEditor()}>Crear curso</button>}
           </div>
           <div className="course-filters">
             <input placeholder="Buscar por nombre, código o etiqueta" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -124,8 +134,8 @@ export default function Courses() {
                   <div className="course-meta"><span><b>{c.level}</b><small>Nivel</small></span><span><b>{enrolled}</b><small>Inscritos</small></span><span><b>{c.lessons}</b><small>Lecciones</small></span></div>
                   <div className="course-card-footer"><div><span className="muted small">Docente responsable</span><strong>{c.instructor}</strong></div>
                     <div className="course-card-actions" onClick={(e) => e.stopPropagation()}>
-                      <button type="button" className="ghost" onClick={() => openEditor(c)}>Editar</button>
-                      {!mine && c.status === "publicado" && <button type="button" disabled={!prereqMet(db, sid, c.id)} onClick={() => act({ t: "enroll", s: sid, c: c.id })}>Inscribirme</button>}
+                      {canManage(c) && !teaching && <button type="button" className="ghost" onClick={() => openEditor(c)}>Editar</button>}
+                      {can("learn") && !mine && c.status === "publicado" && <button type="button" disabled={!prereqMet(db, sid, c.id)} onClick={() => run({ t: "enroll", s: sid, c: c.id })}>Inscribirme</button>}
                     </div>
                   </div>
                 </article>
@@ -136,23 +146,28 @@ export default function Courses() {
         </section>
       )}
 
-      {activeView === "mine" && (
-        <section className="card course-section">
-          <div className="course-section-head"><div><h2>Mis cursos</h2><p className="muted small">Cursos en los que estás inscrito y su progreso actual.</p></div></div>
+      {user?.role !== "superadmin" && (
+        <section className="card course-section" style={{ order: -1 }}>
+          <div className="course-section-head"><div><h2>Mis cursos</h2><p className="muted small">{teaching ? "Los cursos que impartes, con sus matrículas y finalización." : "Cursos en los que estás inscrito y su progreso actual."}</p></div></div>
           <div className="course-grid">
-            {courses.filter((c) => enrollment(db, sid, c.id)).map((c) => {
-              const mine = enrollment(db, sid, c.id)!;
-              const pct = progress(db, sid, c.id) * 100;
+            {myCourses.map((c) => {
+              const mine = enrollment(db, sid, c.id);
+              const group = db.enrollments.filter((e) => e.courseId === c.id);
+              const pct = teaching ? (group.length ? (100 * group.filter((e) => e.done >= c.lessons).length) / group.length : 0) : progress(db, sid, c.id) * 100;
               return <article key={c.id} className="course-card mine" role="button" tabIndex={0} onClick={() => setDetailCourse(c)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setDetailCourse(c); }}>
-                <div className="course-card-top"><span className="course-code">{c.code}</span><span className="badge live">Inscrito</span></div>
+                <div className="course-card-top"><span className="course-code">{c.code}</span><span className="badge live">{teaching ? `${group.length} matrículas` : "Inscrito"}</span></div>
                 <h3>{c.title}</h3><p>{c.description}</p>
-                <div className="progress-header"><span className="muted small">Progreso</span><b>{Math.round(pct)}%</b></div>
+                <div className="progress-header"><span className="muted small">{teaching ? "Finalización" : "Progreso"}</span><b>{Math.round(pct)}%</b></div>
                 <div className="progress-track"><i style={{ width: `${pct}%` }} /></div>
-                <div className="course-card-footer"><div><span className="muted small">{mine.done}/{c.lessons} lecciones completadas</span><strong>{c.instructor}</strong></div><button type="button" onClick={(e) => { e.stopPropagation(); setDetailCourse(c); }}>Continuar</button></div>
+                <div className="course-card-footer"><div><span className="muted small">{teaching ? `${c.lessons} lecciones` : `${mine?.done ?? 0}/${c.lessons} lecciones completadas`}</span><strong>{c.instructor}</strong></div>
+                  <div className="course-card-actions" onClick={(e) => e.stopPropagation()}>
+                    {teaching && canManage(c) && <button type="button" onClick={() => openEditor(c)}>Editar</button>}
+                    {can("learn") && (mine && mine.done < c.lessons ? <button type="button" onClick={() => completeNext(c)}>Completar lección</button> : <span className="badge live">Completado</span>)}
+                  </div></div>
               </article>;
             })}
           </div>
-          {!courses.some((c) => enrollment(db, sid, c.id)) && <div className="empty-state"><h3>Aún no tienes cursos inscritos</h3><p className="muted">Abre el catálogo para encontrar tu próxima inscripción.</p></div>}
+          {myCourses.length === 0 && <div className="empty-state"><h3>{teaching ? "No tienes cursos asignados" : "Aún no tienes cursos inscritos"}</h3>{!teaching && <p className="muted">Inscríbete desde el catálogo.</p>}</div>}
         </section>
       )}
 
@@ -180,9 +195,9 @@ export default function Courses() {
                           const resources = courseResources.filter((r) => r.lessonId === lesson.id);
                           return <div key={lesson.id} className="lesson-row">
                             <div className="lesson-info"><b>{lesson.title}</b><span className="muted small">{lesson.type} · {lesson.duration} min</span>
-                              {resources.map((resource) => <a key={resource.id} href={resource.url} target="_blank" rel="noreferrer" className={`resource-link ${isAvailable ? "" : "blocked"}`} onClick={(e) => { if (!isAvailable) e.preventDefault(); else act({ t: "learning", type: "resource.consumed", s: sid, c: detailCourse.id, entityId: resource.id }); }}>{resource.type === "video" ? "▶" : resource.type === "enlace" ? "↗" : "◫"} {resource.title}</a>)}
+                              {resources.map((resource) => <a key={resource.id} href={resource.url} target="_blank" rel="noreferrer" className={`resource-link ${isAvailable ? "" : "blocked"}`} onClick={(e) => { if (!isAvailable) e.preventDefault(); else if (can("learn")) act({ t: "learning", type: "resource.consumed", s: sid, c: detailCourse.id, entityId: resource.id }); }}><Icon name={resource.type === "video" ? "play" : resource.type === "enlace" ? "externalLink" : "fileText"} size={13} /> {resource.title}</a>)}
                             </div>
-                            {isCompleted ? <span className="badge live">Completada</span> : isAvailable ? <button type="button" onClick={() => { act({ t: "learning", type: "lesson.started", s: sid, c: detailCourse.id, entityId: lesson.id }); act({ t: "lesson", s: sid, c: detailCourse.id }); act({ t: "learning", type: "lesson.completed", s: sid, c: detailCourse.id, entityId: lesson.id }); }}>Completar</button> : <span className="badge">Bloqueada</span>}
+                            {isCompleted ? <span className="badge live">Completada</span> : isAvailable ? !can("learn") ? <span className="badge">Disponible</span> : <button type="button" onClick={() => { if (!run({ t: "learning", type: "lesson.started", s: sid, c: detailCourse.id, entityId: lesson.id })) return; act({ t: "lesson", s: sid, c: detailCourse.id }); act({ t: "learning", type: "lesson.completed", s: sid, c: detailCourse.id, entityId: lesson.id }); }}>Completar</button> : <span className="badge">Bloqueada</span>}
                           </div>;
                         })}
                       </div>;
@@ -195,7 +210,7 @@ export default function Courses() {
                 <div><span className="muted small">Docente responsable</span><strong>{detailCourse.instructor}</strong></div>
                 <div><span className="muted small">Duración estimada</span><strong>{detailCourse.hpl} h por módulo</strong></div>
                 <div><span className="muted small">Estado</span><strong>{detailCourse.status}</strong></div>
-                {enrollment(db, sid, detailCourse.id) ? <button type="button" onClick={() => setActiveView("mine")}>Ir a Mis cursos</button> : <button type="button" disabled={detailCourse.status !== "publicado" || !prereqMet(db, sid, detailCourse.id)} onClick={() => act({ t: "enroll", s: sid, c: detailCourse.id })}>Inscribirme</button>}
+                {enrollment(db, sid, detailCourse.id) ? <button type="button" onClick={() => setDetailCourse(null)}>Ya inscrito · cerrar</button> : can("learn") && <button type="button" disabled={detailCourse.status !== "publicado" || !prereqMet(db, sid, detailCourse.id)} onClick={() => run({ t: "enroll", s: sid, c: detailCourse.id })}>Inscribirme</button>}
               </aside>
             </div>
           </section>
@@ -231,6 +246,7 @@ export default function Courses() {
           </section>
         </div>
       )}
+      {notice}
     </div>
   );
 }
