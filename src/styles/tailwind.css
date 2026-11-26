@@ -1,0 +1,29 @@
+/* Tailwind v4 SIN preflight: solo tema + utilidades, para no alterar las vistas existentes. */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme {
+  --color-em-bg: #06152B;
+  --color-em-surface: #0A1F3D;
+  --color-em-surface2: #0D2B52;
+  --color-em-blue: #087FE5;
+  --color-em-cyan: #20C8F5;
+  --color-em-violet: #8B4DFF;
+  --color-em-teal: #00BFA6;
+  --color-em-muted: #8FA6C4;
+  --color-em-text: #E6EEF8;
+  --color-em-onaccent: #FFFFFF;   /* texto sobre botones de color: blanco en ambos temas */
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+:root { --em-shadow: rgba(2, 12, 28, .25); }
+
+/* Destello sutil cuando un número en vivo cambia (se anula con prefers-reduced-motion). */
+@keyframes em-flash {
+  0% { background-color: rgba(32, 200, 245, .28); }
+  100% { background-color: rgba(32, 200, 245, 0); }
+}
+/* Flujo de datos en los enlaces del grafo mientras se entrena. */
+@keyframes em-dash { to { stroke-dashoffset: -28; } }
+@media (prefers-reduced-motion: reduce) { line[style*="em-dash"] { animation: none !important; } }
+.em-flash { animation: em-flash 900ms ease-out; border-radius: 6px; }
+@media (prefers-reduced-motion: reduce) { .em-flash { animation: none; } }

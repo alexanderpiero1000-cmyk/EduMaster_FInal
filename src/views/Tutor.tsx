@@ -1,26 +1,34 @@
-import { courses, skills } from "../data/db";
-import { course, enrollment, mastery, probCompletion, risk, student } from "../data/selectors";
+import { useState } from "react";
 import { useStore } from "../store/Store";
-import RecommendationList from "../components/RecommendationList";
+import { student } from "../data/selectors";
+import ReviewPanel from "../components/ui/ReviewPanel";
+import StudentTutor from "../components/ui/StudentTutor";
+import TutorFooter from "../components/ui/TutorBridges";
+import Badge from "../components/ui/Badge";
+import { TUTOR_ENGINE } from "../components/ui/tutorEngine";
+import NeuralLab from "../neural/NeuralLab";
+import { consumeRequestedTab } from "../neural/session";
 
 export default function Tutor() {
-  const { db, act, sid } = useStore();
+  const { can, sid } = useStore();
+  const [tab, setTab] = useState<"tutor" | "lab">(() => consumeRequestedTab() ?? "tutor");
+  const openLab = () => setTab("lab");
+  const learner = can("reco.feedback");
   return (
-    <div className="cols">
-      <section className="card"><div className="card-head"><h2>Estimaciones de {student(sid).name}</h2><span className="badge demo">Estimación IA · no es nota oficial</span></div>
-        <p>Señal de apoyo: <span className={`badge ${risk(db, sid) === "alta" ? "warn" : ""}`}>{risk(db, sid)}</span> <span className="muted small">Una probabilidad es una estimación, no un diagnóstico.</span></p>
-        <h3>Dominio por competencia</h3>
-        <ul className="list">{skills.map((k) => <li key={k.id}><span>{k.name}</span><div className="bar w"><i style={{ width: `${mastery(db, sid, k.id)}%` }} /></div><b>{mastery(db, sid, k.id)}%</b></li>)}</ul>
-        <h3>Probabilidad de completar (ventana 30 d)</h3>
-        <ul className="list">{courses.filter((c) => enrollment(db, sid, c.id)).map((c) => <li key={c.id}><span>{c.title}</span><b>{Math.round(probCompletion(db, sid, c.id) * 100)}%</b></li>)}</ul>
-        <p className="muted small">Modelo: heurística DEMO. Con datos reales: EduMaster Multi-Task Learning Network v1 (por entrenar).</p></section>
-      <div>
-        <RecommendationList />
-        <div className="card" style={{ marginTop: 12 }}>
-          <button onClick={() => act({ t: "log", type: "recommendation.created", text: `Ayuda solicitada por ${student(sid).name}: ${course(courses[0].id).title} y brechas recalculadas` })}>Pedir ayuda al tutor</button>
-          {db.settings.humanReview && <p className="muted small">Revisión docente activa: el docente puede revisar o anular estas sugerencias.</p>}
-        </div>
+    <>
+      <div className="course-tabs" role="tablist" aria-label="Secciones de IA Tutor" style={{ marginBottom: 12 }}>
+        <button role="tab" aria-selected={tab === "tutor"} className={`course-tab${tab === "tutor" ? " active" : ""}`} onClick={() => setTab("tutor")}>Tutor</button>
+        <button role="tab" aria-selected={tab === "lab"} className={`course-tab${tab === "lab" ? " active" : ""}`} onClick={() => setTab("lab")}>Laboratorio</button>
       </div>
-    </div>
+      {tab === "lab" ? <NeuralLab /> : (
+        <div className="space-y-6 font-sans">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="m-0 text-[15px] text-em-text">{learner ? `Hola, ${student(sid).name.split(" ")[0]}. Esto es lo que te conviene hacer ahora.` : "Quién necesita tu ayuda."}</p>
+            <Badge tone="demo">{TUTOR_ENGINE}</Badge>
+          </div>
+          {learner ? <StudentTutor onOpenLab={openLab} /> : <><ReviewPanel /><TutorFooter onOpenLab={openLab} /></>}
+        </div>
+      )}
+    </>
   );
 }
