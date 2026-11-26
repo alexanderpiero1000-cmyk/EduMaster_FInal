@@ -1,0 +1,56 @@
+/* Tema claro. El oscuro es el de global.css y tailwind.css y no se modifica.
+   Se importa al final (main.tsx) para ganar por orden a las hojas anteriores. */
+
+:root[data-theme="light"] {
+  /* variables de global.css */
+  --bg:#F3F6FB; --surface:#FFFFFF; --surface2:#F7F9FD; --blue:#0A6FC9; --cyan:#076C91;
+  --violet:#6D34D6; --teal:#007A69; --text:#10213B; --muted:#4C5D78; --border:rgba(16,64,128,.20);
+
+  /* tokens de Tailwind */
+  --color-em-bg:#F3F6FB; --color-em-surface:#FFFFFF; --color-em-surface2:#F7F9FD; --color-em-blue:#0A6FC9;
+  --color-em-cyan:#076C91; --color-em-violet:#6D34D6; --color-em-teal:#007A69; --color-em-muted:#4C5D78; --color-em-text:#10213B;
+  --color-white:#0B1B33;          /* en estas pantallas "white" es la tinta: texto, bordes y velos */
+  --color-amber-200:#7A5200; --color-amber-300:#855600;
+  --color-orange-300:#A8480B; --color-orange-400:#B4530A;
+  --color-red-300:#B42318; --color-red-400:#C4291C; --color-violet-300:#5B21B6;
+  --em-shadow:rgba(16,40,80,.08);
+
+  /* grafo de la red */
+  --graph-pos:#0B86B8; --graph-neg:#7C3AED;
+}
+
+/* ---- global.css: botones y campos ---- */
+/* :where() deja la especificidad de un <button> simple: las clases (.nav, .course-tab...) siguen mandando */
+:where([data-theme="light"]) button { color:#fff; }
+:where([data-theme="light"]) button.ghost,
+:where([data-theme="light"]) button.modal-close { color:var(--text); }
+:where([data-theme="light"]) button:not(.ghost):not(.nav):not(.course-tab):hover:not(:disabled) { background:#095FAD; }
+[data-theme="light"] button.ghost:hover:not(:disabled) { background:rgba(10,111,201,.10); }
+[data-theme="light"] .nav:not(.active):hover { background:rgba(10,111,201,.10); color:var(--text); }
+[data-theme="light"] .editor-tabs button:hover:not(:disabled) { background:rgba(10,111,201,.10); color:var(--text); }
+[data-theme="light"] input, [data-theme="light"] select, [data-theme="light"] textarea { background:#FFFFFF; }
+
+/* ---- colores fijos de global.css y fase0.css ---- */
+[data-theme="light"] .card { box-shadow:0 2px 10px var(--em-shadow); }
+[data-theme="light"] .course-card { background:linear-gradient(145deg,#FFFFFF,#F5F8FD); border-color:var(--border); box-shadow:0 4px 14px var(--em-shadow); }
+[data-theme="light"] .modal-backdrop { background:rgba(16,33,59,.45); }
+[data-theme="light"] .badge.demo { color:#855600; border-color:#B7791F; }
+[data-theme="light"] .badge.warn { color:#A8480B; border-color:#A8480B; }
+[data-theme="light"] .bad, [data-theme="light"] .login-error { color:#A8480B; }
+[data-theme="light"] .bell-count { color:#fff; }
+
+/* ---- colores fijos dentro de los SVG (una regla CSS gana al atributo) ---- */
+[data-theme="light"] svg [fill="#06152B"] { fill:#FFFFFF; }
+[data-theme="light"] svg [stroke="#06152B"] { stroke:#FFFFFF; }
+[data-theme="light"] svg [fill="#fff"] { fill:#0B1B33; }
+[data-theme="light"] svg [stroke="#fff"] { stroke:#0B1B33; }
+[data-theme="light"] svg [fill="#E6EEF8"], [data-theme="light"] svg [fill="#C5D4E8"] { fill:#10213B; }
+[data-theme="light"] svg [fill="#8FA6C4"] { fill:#4C5D78; }
+[data-theme="light"] svg [stroke="#8FA6C4"] { stroke:#6B7C96; }
+[data-theme="light"] svg [stroke="#20C8F5"] { stroke:#0B86B8; }
+[data-theme="light"] svg [fill="#E6F9FF"] { fill:#0369A1; }
+[data-theme="light"] svg [fill="#B58CFF"] { fill:#7C3AED; }
+[data-theme="light"] svg [stroke="rgba(255,255,255,.05)"], [data-theme="light"] svg [stroke="rgba(255,255,255,.06)"] { stroke:rgba(16,40,80,.12); }
+
+.theme-toggle { display:inline-flex; align-items:center; justify-content:center; padding:7px 10px; }
+.login-theme { align-self:flex-end; margin-bottom:-8px; }

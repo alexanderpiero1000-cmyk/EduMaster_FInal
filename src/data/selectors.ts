@@ -57,17 +57,20 @@ export function probCompletion(db: DB, s: string, c: string) {
 }
 export const risk = (db: DB, s: string) => { const p = avgProgress(db, s); return p < 0.35 ? "alta" : p < 0.6 ? "media" : "baja"; };
 
-export interface Rec { key: string; courseId: string; verb: string; reason: string }
+export interface Rec { key: string; courseId: string; verb: string; reason: string; skillId: string; goalId: string }
 export function recommend(db: DB, s: string): Rec[] {
   const weak = [...skills].sort((a, b) => mastery(db, s, a.id) - mastery(db, s, b.id)).slice(0, 3);
   const out: Rec[] = [];
   for (const k of weak) {
     let cand = courses.filter((c) => c.skills.some((x) => x.id === k.id) && progress(db, s, c.id) < 1)
       .sort((a, b) => (b.skills.find((x) => x.id === k.id)!.w) - (a.skills.find((x) => x.id === k.id)!.w))[0];
+    const goal = cand;
     if (cand && !prereqMet(db, s, cand.id)) cand = course(cand.prereq!);
     if (!cand || out.some((r) => r.courseId === cand.id)) continue;
-    out.push({ key: `${s}:${cand.id}`, courseId: cand.id, verb: enrollment(db, s, cand.id) ? "Continúa" : "Inscríbete",
-      reason: `Brecha en ${k.name} (dominio ${mastery(db, s, k.id)}%)` });
+    const gap = `brecha en ${k.name} (dominio ${mastery(db, s, k.id)}%)`;
+    out.push({ key: `${s}:${cand.id}`, courseId: cand.id, verb: enrollment(db, s, cand.id) ? "Continúa" : "Inscríbete", skillId: k.id, goalId: goal.id,
+      // si el curso sugerido es un prerrequisito, se dice para qué sirve
+      reason: goal && goal.id !== cand.id ? `Requisito previo de ${goal.title}, por una ${gap}` : `Brecha en ${k.name} (dominio ${mastery(db, s, k.id)}%)` });
   }
   return out;
 }
