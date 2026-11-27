@@ -20,7 +20,8 @@ lerna-debug.log*
 .env
 .env.*
 !.env.example
-
+.env.local
+.env.example
 # Caches / tests
 .vite/
 .cache/
