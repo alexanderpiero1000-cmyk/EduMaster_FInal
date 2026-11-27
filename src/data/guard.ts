@@ -12,14 +12,16 @@ const need: Partial<Record<Action["t"], Perm>> = {
   issue: "cert.issue", revoke: "cert.revoke", rec: "reco.feedback", help: "reco.feedback", review: "reco.review",
   post: "post", hide: "moderate", course: "course.manage", path: "path.assign", assign: "path.assign",
   setting: "settings.edit", user: "settings.edit", export: "export", "model.register": "ml.approve",
+  "help.ai": "reco.feedback", "help.human": "reco.feedback",
+  "help.reply": "reco.review",
 };
 // Acciones ligadas a un curso: el docente solo puede ejecutarlas sobre cursos que posee.
-const courseScoped: Action["t"][] = ["lesson", "enroll", "learning", "submit", "grade", "attempt", "issue", "revoke", "rec", "help", "review", "post", "hide", "course"];
+const courseScoped: Action["t"][] = ["lesson", "enroll", "learning", "submit", "grade", "attempt", "issue", "revoke", "rec", "help", "help.ai", "help.human", "help.reply", "review", "post", "hide", "course"];
 
 /** Estudiante y curso sobre los que actúa una acción. */
 export function targetOf(db: DB, a: Action): { s?: string; c?: string } {
   switch (a.t) {
-    case "lesson": case "enroll": case "learning": case "submit": case "attempt": case "issue": case "post": case "help": return { s: a.s, c: a.c };
+    case "lesson": case "enroll": case "learning": case "submit": case "attempt": case "issue": case "post": case "help": case "help.ai": case "help.human": case "help.reply": return { s: a.s, c: a.c };
     case "grade": { const sub = db.submissions.find((x) => x.id === a.id); return { s: sub?.studentId, c: sub?.courseId }; }
     case "revoke": { const cert = db.certs.find((x) => x.folio === a.folio); return { s: cert?.studentId, c: cert?.courseId }; }
     case "rec": case "review": { const [s, c] = a.key.split(":"); return { s, c }; }

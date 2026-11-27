@@ -14,6 +14,7 @@ import Certificates from "./views/Certificates";
 import Community from "./views/Community";
 import Settings from "./views/Settings";
 import Login from "./views/Login";
+import EduChatbot from "./components/ui/EduChatbot";
 
 const views: Record<string, () => React.ReactElement> = {
   "Resumen": Dashboard, "Planes de Aprendizaje": Paths, "Cursos": Courses, "Análisis": Analytics, "IA Tutor": Tutor,
@@ -33,6 +34,7 @@ function Shell() {
     <div className="app">
       <Sidebar active={current} onSelect={setSection} />
       <main><Topbar /><h2 className="page-title">{current} <span className="badge role-chip">{roleLabel(user.role)}</span></h2><View key={user.id} /></main>
+      {user.role === "estudiante" && <EduChatbot />}
     </div>
   );
 }

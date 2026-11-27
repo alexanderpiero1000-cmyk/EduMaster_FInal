@@ -9,11 +9,14 @@ import { course, enrollment, mastery, recommend } from "../../data/selectors";
 import type { Rec } from "../../data/selectors";
 import { lastReview, openHelp } from "../../data/help";
 import { useStore } from "../../store/Store";
+import { useState } from "react";
+import { askAI, type AiMessage } from "./aiClient";
 
 const skillName = (id: string) => skills.find((k) => k.id === id)!.name;
 const why = (r: Rec) => (r.goalId === r.courseId ? `Para mejorar en ${skillName(r.skillId)}` : `Te abre la puerta a ${course(r.goalId).title}`);
 const RESPONSE = { aceptada: "En tu plan", util: "Marcada como útil", descartada: "Descartada" } as const;
 const time = (iso: string) => new Date(iso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+type TutorLine = AiMessage & { source?: "ai" | "fallback" };
 
 export function Meter({ value, label }: { value: number; label: string }) {
   return (
@@ -30,6 +33,30 @@ export default function StudentTutor({ onOpenLab }: { onOpenLab: () => void }) {
   const [main, ...others] = recs;
   const asked = openHelp(db, sid);
   const reply = lastReview(db, sid);
+  const [tutorMessages, setTutorMessages] = useState<TutorLine[]>([]);
+  const [tutorInput, setTutorInput] = useState("");
+  const [tutorBusy, setTutorBusy] = useState(false);
+  const [tutorError, setTutorError] = useState("");
+  const [helpError, setHelpError] = useState("");
+
+  const sendTutor = async () => {
+    const text = tutorInput.trim();
+    if (!text || tutorBusy) return;
+    setTutorInput("");
+    setTutorError("");
+    const next: TutorLine[] = [...tutorMessages, { role: "student", text }];
+    setTutorMessages(next);
+    setTutorBusy(true);
+    const enrolled = db.enrollments.filter((e) => e.studentId === sid);
+    const context = enrolled.map((e) => {
+      const c = course(e.courseId);
+      return `${c.title}: nivel ${c.level}, avance ${e.done}/${c.lessons}`;
+    }).join("; ");
+    const result = await askAI("tutor", next.map(({ role, text: message }) => ({ role, text: message })), context);
+    setTutorMessages([...next, { role: "assistant", text: result.text, source: result.source }]);
+    if (result.unavailable) setTutorError(result.error || "La IA real no está disponible; se utilizó el respaldo local.");
+    setTutorBusy(false);
+  };
 
   const accept = (r: Rec) => { if (run({ t: "rec", key: r.key, v: "aceptada" }) && !enrollment(db, sid, r.courseId)) run({ t: "enroll", s: sid, c: r.courseId }); };
   const advance = (c: string) => {
@@ -80,7 +107,44 @@ export default function StudentTutor({ onOpenLab }: { onOpenLab: () => void }) {
             ) : <p className="m-0 text-[14px] text-em-muted">Tu docente te responde aquí.</p>}
         </div>
         <Btn className="mt-4 w-full" disabled={!!asked || !db.enrollments.some((e) => e.studentId === sid)}
-          onClick={() => run({ t: "help", s: sid, c: db.enrollments.find((e) => e.studentId === sid)!.courseId })}>{asked ? "Solicitud enviada" : "Pedir ayuda"}</Btn>
+          onClick={async () => {
+            setHelpError("");
+            const c = db.enrollments.find((e) => e.studentId === sid)?.courseId;
+            if (!c) return;
+            if (!run({ t: "help", s: sid, c })) return;
+            const target = course(c);
+            const question = `Necesito ayuda con ${target.title}. ¿Puedes identificar el tema y darme una explicación con pistas antes de la respuesta?`;
+            const result = await askAI("tutor", [{ role: "student", text: question }], `${target.title}: nivel ${target.level}`);
+            if (result.unavailable) setHelpError(result.error || "No se pudo obtener respuesta de la IA real.");
+            run({ t: "help.ai", s: sid, c, question, topic: target.tags[0] || target.title, messages: [
+              { role: "student", text: question, at: new Date().toISOString(), source: "ai" },
+              { role: "assistant", text: result.text, at: new Date().toISOString(), source: result.source === "ai" ? "ai" : "simulation" },
+            ] });
+          }}>{asked ? "Solicitud enviada" : "Pedir ayuda"}</Btn>
+        {asked && <Btn variant="ghost" className="mt-2 w-full" onClick={() => {
+          const c = db.enrollments.find((e) => e.studentId === sid)?.courseId;
+          if (c) run({ t: "help.human", s: sid, c, question: "Solicito atención adicional de un docente." });
+        }}>Solicitar atención de un docente</Btn>}
+        {helpError && <p role="alert" className="mt-2 text-[12px] text-amber-300">Problema de conexión: {helpError}</p>}
+      </Card>
+
+      <Card title="Conversación con el IA Tutor" className="lg:col-span-12">
+        <div role="log" aria-live="polite" className="max-h-[300px] space-y-2 overflow-auto rounded-xl bg-white/[0.03] p-3">
+          {tutorMessages.length === 0 && <p className="m-0 text-[13px] text-em-muted">Pregunta sobre un curso, pide pistas, ejemplos o una explicación alternativa.</p>}
+          {tutorMessages.map((m, i) => (
+            <div key={i} className={`max-w-[85%] rounded-2xl px-3 py-2 text-[13px] ${m.role === "student" ? "ml-auto bg-em-blue/30 text-white" : "bg-white/5 text-em-text"}`}>
+              <div className="mb-1 text-[10px] uppercase tracking-wide text-em-muted">{m.role === "student" ? "Alumno" : m.source === "fallback" ? "Respaldo · no es IA" : "IA Tutor"}</div>{m.text}
+            </div>
+          ))}
+          {tutorBusy && <div className="text-[12px] text-em-muted">El IA Tutor está escribiendo…</div>}
+        </div>
+        {tutorError && <p role="alert" className="mt-2 text-[12px] text-amber-300">{tutorError}</p>}
+        <form className="mt-3 flex gap-2" onSubmit={(e) => { e.preventDefault(); void sendTutor(); }}>
+          <input className="min-w-0 flex-1" maxLength={2000} value={tutorInput} onChange={(e) => setTutorInput(e.target.value)} onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendTutor(); }
+          }} placeholder="¿Qué tema quieres comprender?" />
+          <Btn type="submit" disabled={tutorBusy || !tutorInput.trim()}>Enviar</Btn>
+        </form>
       </Card>
 
       <Card title="Mis habilidades" className="lg:col-span-6">

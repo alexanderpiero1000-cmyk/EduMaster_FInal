@@ -46,6 +46,20 @@ export interface LearningEvent { id: string; type: LearningEventType; studentId:
 export interface Path { id: string; title: string; objective: string; courseIds: string[] }
 export type RecState = "aceptada" | "descartada" | "util";
 export interface Settings { sim: boolean; reducedMotion: boolean; humanReview: boolean }
+export type HelpStatus = "ai_attended" | "fallback" | "human_requested" | "reviewed";
+export interface HelpMessage { role: "student" | "assistant"; text: string; at: string; source: "ai" | "simulation" | "teacher" }
+export interface HelpConsultation {
+  id: string;
+  studentId: string;
+  courseId: string;
+  topic: string;
+  question: string;
+  status: HelpStatus;
+  at: string;
+  updatedAt: string;
+  messages: HelpMessage[];
+}
+export interface ChatMessage { role: "student" | "assistant"; text: string; at: string; source: "ai" | "local" | "error" }
 export interface DB {
   enrollments: Enrollment[]; attempts: Attempt[]; certs: Cert[]; posts: Post[]; audit: Audit[]; learningEvents: LearningEvent[];
   recState: Record<string, RecState>; settings: Settings;
@@ -54,6 +68,7 @@ export interface DB {
   reviews: Record<string, Review>;
   inactive: string[];                      // ids de usuarios de demostración desactivados
   modelVersions: ModelVersion[];
+  consultations: HelpConsultation[];
 }
 
 export const regions = ["América del Norte","Europa","Asia","América del Sur","África","Oceanía"];
@@ -141,6 +156,7 @@ export function seed(): DB {
     reviews: {},
     inactive: [],
     modelVersions: [],
+    consultations: [],
     notifications: [
       { id: "n1", to: "s:s1", text: "Bienvenida: aquí verás tus avisos de cursos y calificaciones (DEMO).", at: H(0.1), read: false },
       { id: "n2", to: "c:c1", text: "Python Básico: aquí llegarán las entregas por calificar (DEMO).", at: H(0.1), read: false },

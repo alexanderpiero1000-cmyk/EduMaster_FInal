@@ -6,6 +6,7 @@ import { assessments } from "../../data/db";
 import { course, mastery, progress } from "../../data/selectors";
 import { myCourseIds, scopeStudents } from "../../data/scope";
 import type { DemoUser } from "../../data/users";
+import { openHelp } from "../../data/help";
 
 export type ViewKind = "estudiante" | "docente" | "general";
 /** Alcance de datos del Resumen, derivado de la sesión (permisos de data/scope). */
@@ -85,7 +86,7 @@ export function kpisFor(db: DB, sc: Scope, now = Date.now()): KpiData[] {
   const finPrev = n - created > 0 ? ((done - completedNow) / (n - created)) * 100 : null;
   const courseAssess = assessments.filter((a) => sc.courseIds.includes(a.courseId)).map((a) => a.id);
   const att = db.attempts.filter((t) => sc.studentIds.includes(t.studentId) && courseAssess.includes(t.assessmentId));
-  const gradeNow = mean(att.map((t) => t.score)), gradePrev = mean(att.filter((t) => Date.parse(t.at) < since).map((t) => t.score));
+  const gradePrev = mean(att.filter((t) => Date.parse(t.at) < since).map((t) => t.score));
 
   if (sc.view === "estudiante") {
     const active = ens.filter((e) => e.done < course(e.courseId).lessons).length;
@@ -97,11 +98,36 @@ export function kpisFor(db: DB, sc: Scope, now = Date.now()): KpiData[] {
     ];
   }
   if (sc.view === "docente") {
+    const enrolledStudents = [...new Set(ens.map((e) => e.studentId))];
+    const assessmentIds = new Set(assessments.filter((a) => sc.courseIds.includes(a.courseId)).map((a) => a.id));
+    const attempts = db.attempts.filter((a) => enrolledStudents.includes(a.studentId) && assessmentIds.has(a.assessmentId));
+    const lastWeek = now - 7 * 24 * 60 * 60 * 1000;
+    const activeIds = new Set([
+      ...db.learningEvents.filter((e) => sc.studentIds.includes(e.studentId) && sc.courseIds.includes(e.courseId) && Date.parse(e.at) >= lastWeek).map((e) => e.studentId),
+      ...acts.filter((a) => a.at >= lastWeek && a.studentId && a.courseId).map((a) => a.studentId!),
+    ]);
+    const lowIds = new Set(enrolledStudents.filter((id) => {
+      const mine = ens.filter((e) => e.studentId === id);
+      const avg = mine.reduce((sum, e) => sum + progress(db, id, e.courseId), 0) / mine.length;
+      const scores = attempts.filter((a) => a.studentId === id).map((a) => a.score);
+      return avg < 0.35 || (scores.length > 0 && scores.reduce((sum, score) => sum + score, 0) / scores.length < 60);
+    }));
+    const consultations = db.consultations.filter((x) => sc.studentIds.includes(x.studentId) && sc.courseIds.includes(x.courseId));
+    const pendingHelp = new Set(consultations.filter((x) => x.status === "human_requested" || x.status === "fallback").map((x) => `${x.studentId}:${x.courseId}`));
+    for (const audit of db.audit.filter((x) => x.type === "help.requested" && x.s && x.c && sc.studentIds.includes(x.s) && sc.courseIds.includes(x.c))) {
+      const consultationExists = consultations.some((x) => x.studentId === audit.s && x.courseId === audit.c);
+      if (!consultationExists && openHelp(db, audit.s!, audit.c)?.id === audit.id) pendingHelp.add(`${audit.s}:${audit.c}`);
+    }
+    const avgScore = mean(attempts.map((a) => a.score));
     return [
-      { id: "enr", label: "Matrículas en mis cursos", value: String(n), formula: "Matrículas de estudiantes en los cursos donde el docente es titular o colaborador.", delta: diff(n, n - created, "n") },
-      { id: "fin", label: "Finalización", value: n ? pct(done / n) : "—", formula: "Matrículas con todas las lecciones completadas ÷ matrículas de sus cursos.", delta: n ? diff((done / n) * 100, finPrev, "pts") : null },
-      { id: "grade", label: "Nota media", value: gradeNow === null ? "—" : num(gradeNow, 0), formula: "Media de los puntajes de intento (0-100) en las evaluaciones de sus cursos. Variación: frente a los intentos anteriores a hace 1 h.", delta: gradeNow === null ? null : diff(gradeNow, gradePrev, "pts") },
-      pendKpi(db, sc),
+      { id: "courses", label: "Cursos asignados", value: String(sc.courseIds.length), formula: "Cursos cuyo docente titular o colaborador coincide con la sesión.", delta: null },
+      { id: "students", label: "Estudiantes", value: String(enrolledStudents.length), formula: "Estudiantes únicos con matrícula en tus cursos.", delta: null },
+      { id: "active", label: "Activos · 7 días", value: String(activeIds.size), formula: "Estudiantes con eventos de aprendizaje o actividad auditada en tus cursos durante los últimos 7 días.", delta: null },
+      { id: "low", label: "Necesitan seguimiento", value: String(lowIds.size), formula: "Estudiantes con avance medio menor de 35 % o nota media disponible menor de 60. Señal orientativa, no diagnóstico.", delta: null },
+      { id: "grade-pending", label: "Evaluaciones por calificar", value: String(pendingSubmissions(db, sc)), formula: "Entregas con estado pendiente en tus cursos.", delta: null },
+      { id: "help-pending", label: "Consultas por atender", value: String(pendingHelp.size), formula: "Consultas con intervención humana solicitada y solicitudes antiguas aún abiertas sin conversación registrada.", delta: null },
+      { id: "progress", label: "Avance promedio", value: avgNow === null ? "—" : `${Math.round(avgNow)}%`, formula: "Media del avance de las matrículas de tus cursos.", delta: avgNow === null ? null : diff(avgNow, avgPrev, "pts") },
+      { id: "grade", label: "Calificación promedio", value: avgScore === null ? "—" : num(avgScore, 0), formula: "Media de los intentos registrados en las evaluaciones de tus cursos.", delta: avgScore === null ? null : diff(avgScore, gradePrev, "pts") },
     ];
   }
   return [
@@ -139,8 +165,13 @@ export function supportList(db: DB, sc: Scope) {
   return sc.studentIds.map((id) => {
     const es = enrollmentsOf(db, { ...sc, studentIds: [id] });
     const p = es.length ? es.reduce((s, e) => s + progress(db, id, e.courseId), 0) / es.length : 0;
-    const signal: Signal = p < 0.35 ? "alta" : p < 0.6 ? "media" : "baja";
-    return { id, avg: p, courses: es.length, signal };
+    const courseIds = new Set(es.map((e) => e.courseId));
+    const assessmentIds = assessments.filter((a) => courseIds.has(a.courseId)).map((a) => a.id);
+    const scores = db.attempts.filter((a) => a.studentId === id && assessmentIds.includes(a.assessmentId)).map((a) => a.score);
+    const avgScore = mean(scores);
+    const needsHuman = db.consultations.some((x) => x.studentId === id && courseIds.has(x.courseId) && (x.status === "human_requested" || x.status === "fallback"));
+    const signal: Signal = needsHuman || p < 0.35 || (avgScore !== null && avgScore < 60) ? "alta" : p < 0.6 ? "media" : "baja";
+    return { id, avg: p, avgScore, needsHuman, courses: es.length, signal };
   }).filter((x) => x.courses > 0).sort((a, b) => a.avg - b.avg);
 }
 
