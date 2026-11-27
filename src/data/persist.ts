@@ -42,6 +42,6 @@ export function resetDemo(): void {
 export function maxId(db: DB): number {
   let max = 0;
   const visit = (id: string) => { const m = /^e(\d+)$/.exec(id); if (m) max = Math.max(max, Number(m[1])); };
-  [db.audit, db.notifications, db.attempts, db.submissions, db.posts, db.learningEvents, db.paths].forEach((list) => list.forEach((x) => visit(x.id)));
+    [db.audit, db.notifications, db.attempts, db.submissions, db.posts, db.learningEvents, db.paths, db.consultations].forEach((list) => list.forEach((x) => visit(x.id)));
   return max;
 }

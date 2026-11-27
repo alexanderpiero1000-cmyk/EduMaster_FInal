@@ -61,11 +61,16 @@ export default function Tutor() {
             <Badge tone="demo">{TUTOR_ENGINE}</Badge>
           </div>
 
-          {learner ? (
+                    {learner ? (
             <StudentTutor onOpenLab={openLab} />
           ) : (
-            <TeacherTutorAssistant />
+            <>
+              <TeacherTutorAssistant />
+              {can("reco.review") && <ReviewPanel />}
+            </>
           )}
+
+          <TutorFooter onOpenLab={openLab} />
         </div>
       )}
     </>

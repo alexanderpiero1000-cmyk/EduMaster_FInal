@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useReducer, useRef, useState } fr
 import type { ReactNode } from "react";
 import { course, eligible, enrollment, prereqMet, student } from "../data/selectors";
 import { assessments, seed } from "../data/db";
-import type { Course, DB, RecState, Settings } from "../data/db";
+import type { Course, DB, HelpConsultation, HelpMessage, RecState, Settings } from "../data/db";
 import { authorize, targetOf } from "../data/guard";
 import { can as roleCan } from "../data/permissions";
 import type { Perm } from "../data/permissions";
@@ -21,7 +21,11 @@ export type Action = { by?: string } & (
   | { t: "submit"; s: string; a: string; c: string } | { t: "grade"; id: string; score: number } | { t: "read"; ids: string[] }
   | { t: "issue"; s: string; c: string } | { t: "revoke"; folio: string }
   | { t: "rec"; key: string; v: RecState | null } | { t: "post"; s: string; c: string; text: string; author?: string; parentId?: string }
-  | { t: "help"; s: string; c: string } | { t: "review"; key: string; comment: string } | { t: "hide"; id: string; reason: string }
+  | { t: "help"; s: string; c: string }
+  | { t: "help.ai"; s: string; c: string; question: string; topic: string; messages: HelpMessage[] }
+  | { t: "help.human"; s: string; c: string; question: string }
+  | { t: "help.reply"; s: string; c: string; text: string }
+  | { t: "review"; key: string; comment: string } | { t: "hide"; id: string; reason: string }
   | { t: "course"; c: string; kind: string; text: string } | { t: "path"; title: string; objective: string; courseIds: string[] }
   | { t: "user"; id: string; active: boolean } | { t: "export"; text: string } | { t: "check" }
   | { t: "model.register"; experimentAt: string; label: string; arch: string; auc: number; f1: number; brier: number; testAuc: number | null }
@@ -128,6 +132,39 @@ export function reducer(db: DB, a: Action): DB {
       const mine = db.enrollments.filter((e) => e.studentId === a.s).map((e) => e.courseId);
       const text = `${student(a.s).name} pidió ayuda al tutor`;
       return log(db, HELP_TYPE, `${text} (${course(a.c).title})`, { by, s: a.s, c: a.c, notify: [...mine.map((c) => ({ to: `c:${c}`, text })), { to: "r:superadmin", text }] });
+    }
+        case "help.ai": {
+      // consulta atendida por la IA; si la IA real no respondió (respaldo local) queda pendiente de revisión docente
+      const fallback = a.messages.some((m) => m.role === "assistant" && m.source !== "ai");
+      const status = fallback ? "fallback" as const : "ai_attended" as const;
+      const t = now();
+      const open = db.consultations.find((x) => x.studentId === a.s && x.courseId === a.c && x.status !== "reviewed");
+      const consultation: HelpConsultation = open
+        ? { ...open, topic: a.topic, status: open.status === "human_requested" ? open.status : status, updatedAt: t, messages: [...open.messages, ...a.messages] }
+        : { id: uid(), studentId: a.s, courseId: a.c, topic: a.topic, question: a.question, status, at: t, updatedAt: t, messages: a.messages };
+      const consultations = open ? db.consultations.map((x) => (x === open ? consultation : x)) : [consultation, ...db.consultations];
+      return log({ ...db, consultations }, fallback ? "help.ai.fallback" : "help.ai.attended", `${student(a.s).name}: consulta de ${course(a.c).title} ${fallback ? "con respaldo local (IA no disponible)" : "atendida por la IA"}`, { by, s: a.s, c: a.c });
+    }
+    case "help.human": {
+      const t = now();
+      const open = db.consultations.find((x) => x.studentId === a.s && x.courseId === a.c && x.status !== "reviewed");
+      const msg: HelpMessage = { role: "student", text: a.question, at: t, source: "ai" };
+      const consultation: HelpConsultation = open
+        ? { ...open, status: "human_requested", updatedAt: t, messages: [...open.messages, msg] }
+        : { id: uid(), studentId: a.s, courseId: a.c, topic: course(a.c).title, question: a.question, status: "human_requested", at: t, updatedAt: t, messages: [msg] };
+      const consultations = open ? db.consultations.map((x) => (x === open ? consultation : x)) : [consultation, ...db.consultations];
+      const text = `${student(a.s).name} solicitó atención de un docente (${course(a.c).title})`;
+      return log({ ...db, consultations }, "help.human.requested", text, { by, s: a.s, c: a.c, notify: [{ to: `c:${a.c}`, text }, { to: "r:superadmin", text }] });
+    }
+    case "help.reply": {
+      // el docente responde: se cierra la consulta y se registra la revisión que ve el estudiante
+      const comment = a.text.trim();
+      if (!comment) return db;
+      const t = now();
+      const msg: HelpMessage = { role: "assistant", text: comment, at: t, source: "teacher" };
+      const consultations = db.consultations.map((x) => (x.studentId === a.s && x.courseId === a.c && x.status !== "reviewed"
+        ? { ...x, status: "reviewed" as const, updatedAt: t, messages: [...x.messages, msg] } : x));
+      return reducer({ ...db, consultations }, { t: "review", key: `${a.s}:${a.c}`, comment, by });
     }
     case "review": {
       const t = targetOf(db, a);
